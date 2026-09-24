@@ -36,6 +36,8 @@ class TestApiGuardian(unittest.TestCase):
         self.assertIn("API-SPEC-005", finding_ids)
         # API-SPEC-006 (Role in request body - Mass assignment)
         self.assertIn("API-SPEC-006", finding_ids)
+        # API-AGENT-001 (Missing Idempotency-Key in mutating operation)
+        self.assertIn("API-AGENT-001", finding_ids)
 
     def test_diff_scanner_file(self):
         sample_file = self.base_dir / "sample_routes.py"
@@ -51,6 +53,7 @@ class TestApiGuardian(unittest.TestCase):
         self.assertIn("API-DIFF-003", finding_ids)  # Mass assignment
         self.assertIn("API-DIFF-004", finding_ids)  # Stack disclosure
         self.assertIn("API-DIFF-005", finding_ids)  # BOLA ID lookup
+        self.assertIn("API-AGENT-002", finding_ids) # Insecure tenant_id extraction
 
     def test_local_fuzzer_safeguard(self):
         # Must refuse public internet domains without --allow-remote

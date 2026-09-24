@@ -235,7 +235,8 @@ class SpecAuditor:
                     props = content.get("properties", {})
                     if isinstance(props, dict):
                         for prop_name in props.keys():
-                            if prop_name.lower() in self.PRIVILEGED_PROPERTIES:
+                            p_lower = prop_name.lower()
+                            if p_lower in self.PRIVILEGED_PROPERTIES:
                                 report.add_finding(
                                     Finding(
                                         id="API-SPEC-006",
@@ -250,3 +251,85 @@ class SpecAuditor:
                                         owasp_api_id="API3:2023",
                                     )
                                 )
+
+                            # 5. [AGENT-READY] Chequeo de exposición insegura de tenant_id en body
+                            if p_lower in ("tenant_id", "tenantid", "org_id", "organization_id", "account_id") and not is_login_path:
+                                report.add_finding(
+                                    Finding(
+                                        id="API-AGENT-002",
+                                        title=f"Identificador de Tenant ({prop_name}) expuesto en el Request Body",
+                                        severity=Severity.HIGH,
+                                        category="Aislamiento Multi-Tenant & Agent Safety",
+                                        location=f"{op_location} (body.{prop_name})",
+                                        description=(
+                                            f"El schema permite que el cliente o agente envíe explícitamente `{prop_name}` en el JSON. "
+                                            "Los agentes de IA no deben decidir ni enviar el tenant_id por riesgo de alucinación o Prompt Injection."
+                                        ),
+                                        impact="Un agente o atacante puede cruzar datos o mutar registros en otra organización alterando el ID.",
+                                        remediation="Eliminar el campo del Request Body. El backend debe resolver el tenant_id exclusivamente desde el token/API Key autenticado.",
+                                        owasp_api_id="API1:2023",
+                                        cwe="CWE-639",
+                                    )
+                                )
+
+                # 6. [AGENT-READY] Chequeo de soporte de Idempotencia en mutaciones
+                if method in ("post", "put", "patch") and not is_login_path:
+                    header_params = [
+                        p.get("name", "").lower()
+                        for p in parameters
+                        if isinstance(p, dict) and p.get("in", "").lower() == "header"
+                    ]
+                    has_idempotency = any("idempotency" in h for h in header_params)
+                    is_critical_mutation = any(kw in path.lower() for kw in ("order", "pay", "checkout", "transact", "bill", "transfer", "charge", "invoice"))
+
+                    if not has_idempotency:
+                        report.add_finding(
+                            Finding(
+                                id="API-AGENT-001",
+                                title="Operación de mutación sin cabecera de Idempotencia (Idempotency-Key)",
+                                severity=Severity.HIGH if is_critical_mutation else Severity.MEDIUM,
+                                category="Interoperabilidad con Agentes & Idempotencia",
+                                location=op_location,
+                                description=(
+                                    f"La operación {op_location} modifica recursos pero no declara soporte para la cabecera `Idempotency-Key`. "
+                                    "Los agentes autónomos reintentan llamadas automáticamente ante dudas o latencia."
+                                ),
+                                impact="Riesgo de transacciones o registros duplicados (dobles cargos, compras repetidas) provocados por reintentos de agentes.",
+                                remediation="Añadir la cabecera opcional `Idempotency-Key: <UUIDv4>` al endpoint y almacenar la respuesta en caché (Redis) durante 24h.",
+                                owasp_api_id="API4:2023",
+                                cwe="CWE-674",
+                            )
+                        )
+
+                # 7. [AGENT-READY] Chequeo de formato de error RFC 9457 (Problem Details)
+                responses = operation.get("responses", {})
+                for status_code in ("400", "422", "500"):
+                    err_resp = responses.get(status_code)
+                    if isinstance(err_resp, dict):
+                        content_types = err_resp.get("content", {})
+                        has_problem_json = "application/problem+json" in content_types
+                        has_rfc_fields = False
+                        json_schema = content_types.get("application/json", {}).get("schema", {})
+                        if json_schema.get("properties"):
+                            props_keys = set(json_schema["properties"].keys())
+                            if {"type", "title", "detail"}.issubset(props_keys):
+                                has_rfc_fields = True
+
+                        if not has_problem_json and not has_rfc_fields:
+                            report.add_finding(
+                                Finding(
+                                    id="API-AGENT-003",
+                                    title=f"Respuesta de error {status_code} no estandarizada con RFC 9457 (Problem Details)",
+                                    severity=Severity.LOW,
+                                    category="Semántica de Errores para Agentes (RFC 9457)",
+                                    location=f"{op_location} (responses.{status_code})",
+                                    description=(
+                                        f"El error {status_code} no define el media type `application/problem+json` ni los campos estructurados "
+                                        "(`type`, `title`, `detail`, `errors` con JSON Pointers)."
+                                    ),
+                                    impact="Los agentes de IA no podrán inferir la causa exacta del error semántico para auto-corregir sus llamados.",
+                                    remediation="Definir las respuestas de error bajo RFC 9457 (`application/problem+json`) con campos detallados de validación.",
+                                    owasp_api_id="API8:2023",
+                                )
+                            )
+

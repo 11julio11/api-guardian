@@ -56,6 +56,9 @@ flowchart TD
    * Exposición de parámetros sensibles en query strings (`?token=`, `?api_key=`).
    * Endpoints de colección (listas) sin parámetros de paginación (`limit`, `page`, `offset`).
    * Atributos privilegiados en el cuerpo de peticiones (`role`, `is_admin`, `balance`).
+   * **[AGENT-READY] Soporte de Idempotencia:** Detecta mutaciones que carecen de la cabecera `Idempotency-Key` (evita dobles cargos ante reintentos de agentes).
+   * **[AGENT-READY] No exposición de Tenant:** Alerta si `tenant_id` está en el request body (previene alucinaciones y prompt injection).
+   * **[AGENT-READY] Semántica de Errores RFC 9457:** Verifica si los errores 4xx/5xx tienen estructura de Problem Details (`application/problem+json`) para que los LLMs se auto-corrijan.
 
 ---
 
@@ -71,6 +74,7 @@ En empresas grandes con cientos de miles de líneas de código, **no analices to
    ```
 2. **Puntos de auditoría crítica (OWASP API 2023):**
    * **BOLA / IDOR:** Asegurar que las consultas por ID (`findById(id)`) validen que el recurso pertenezca a la empresa o usuario de la sesión (`WHERE id = :id AND tenant_id = :tenant_id`).
+   * **Aislamiento de Tenant & Agentes:** Verificar que el `tenant_id` se extraiga exclusivamente de la sesión/token y nunca directamente de `req.body.tenant_id` o `data.get('tenant_id')`.
    * **Mass Assignment:** Detectar si se pasan objetos directos del cliente a la base de datos (`Model.create(req.body)`).
    * **Inyección SQL:** Validar que no existan concatenaciones de texto en queries.
    * **Fuga de Excepciones:** Verificar que los bloques `catch` no retornen `err.stack` al cliente.

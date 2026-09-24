@@ -13,6 +13,8 @@ def get_order_endpoint(req, res):
 
 def create_user_endpoint(request):
     # 3. Mass Assignment vulnerability: raw body into create
+    # 6. Insecure tenant_id extraction from client body
+    tenant = request.data.get("tenant_id")
     new_user = User.create(request.data)
     return new_user
 

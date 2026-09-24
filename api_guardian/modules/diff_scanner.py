@@ -89,6 +89,21 @@ class DiffScanner:
             "owasp_api_id": "API1:2023",
             "cwe": "CWE-639",
         },
+        # 6. [AGENT-READY] Insecure Tenant ID extraction from client payload
+        {
+            "id": "API-AGENT-002",
+            "title": "Extracción insegura de tenant_id desde el cuerpo de la petición (Riesgo de Agentes)",
+            "severity": Severity.HIGH,
+            "category": "Aislamiento Multi-Tenant & Agent Safety",
+            "regex": re.compile(
+                r"""(?i)(req\.body|request\.data|data|body|payload)(\.get\(['"](tenant_id|org_id|account_id)['"]\)|\[['"](tenant_id|org_id|account_id)['"]\]|\.(tenant_id|org_id|account_id))"""
+            ),
+            "description": "Se detectó la extracción del identificador de tenant/organización directamente desde los datos enviados por el cliente o agente.",
+            "impact": "Un agente autónomo (por alucinación o Prompt Injection) o un atacante puede alterar este valor y acceder o mutar datos de otra empresa.",
+            "remediation": "Extraer el tenant_id exclusivamente del token JWT / API Key en el middleware de autenticación (ej: `req.user.tenant_id` o `request.state.tenant_id`).",
+            "owasp_api_id": "API1:2023",
+            "cwe": "CWE-639",
+        },
     ]
 
     def __init__(self, repo_path: str = ".", base_ref: Optional[str] = None):
