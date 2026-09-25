@@ -53,3 +53,11 @@ reports/*.md
 # OS
 .DS_Store
 Thumbs.db
+
+# Antigravity / ECC Agent Harness (skills, workflows, extra rules)
+.agents/agents/
+.agents/skills/
+.agents/workflows/
+.agents/ecc-install-state.json
+.agents/rules/*
+!.agents/rules/protocolo-3-fases.md
