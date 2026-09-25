@@ -36,6 +36,14 @@ class TestApiGuardian(unittest.TestCase):
         self.assertIn("API-SPEC-005", finding_ids)
         # API-SPEC-006 (Role in request body - Mass assignment)
         self.assertIn("API-SPEC-006", finding_ids)
+        # API-SPEC-007 (SSRF on unvalidated URL parameters or schema)
+        self.assertIn("API-SPEC-007", finding_ids)
+        # API-SPEC-008 (Unrestricted resource consumption on string/arrays)
+        self.assertIn("API-SPEC-008", finding_ids)
+        # API-SPEC-009 (Agent-safety: missing descriptions on mutating operations)
+        self.assertIn("API-SPEC-009", finding_ids)
+        # API-SPEC-010 (Improper inventory: unversioned endpoints)
+        self.assertIn("API-SPEC-010", finding_ids)
         # API-AGENT-001 (Missing Idempotency-Key in mutating operation)
         self.assertIn("API-AGENT-001", finding_ids)
 
@@ -54,6 +62,9 @@ class TestApiGuardian(unittest.TestCase):
         self.assertIn("API-DIFF-004", finding_ids)  # Stack disclosure
         self.assertIn("API-DIFF-005", finding_ids)  # BOLA ID lookup
         self.assertIn("API-AGENT-002", finding_ids) # Insecure tenant_id extraction
+        self.assertIn("API-DIFF-006", finding_ids)  # Outgoing SSRF request
+        self.assertIn("API-DIFF-007", finding_ids)  # Command injection / RCE
+        self.assertIn("API-DIFF-008", finding_ids)  # CORS wildcard with credentials
 
     def test_local_fuzzer_safeguard(self):
         # Must refuse public internet domains without --allow-remote

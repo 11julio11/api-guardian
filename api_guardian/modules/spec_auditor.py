@@ -13,6 +13,7 @@ class SpecAuditor:
     SENSITIVE_PARAM_NAMES = {"token", "auth", "key", "api_key", "apikey", "password", "secret", "access_token"}
     PRIVILEGED_PROPERTIES = {"role", "is_admin", "isadmin", "admin", "permissions", "balance", "verified", "account_type"}
     PAGINATION_KEYWORDS = {"limit", "page", "pagesize", "page_size", "offset", "cursor", "take", "skip"}
+    SSRF_PARAM_KEYWORDS = {"url", "webhook", "callback", "redirect", "target_url", "dest", "endpoint", "feed_url", "image_url", "avatar_url"}
 
     def __init__(self, spec_path: str):
         self.spec_path = Path(spec_path)
@@ -197,6 +198,28 @@ class SpecAuditor:
                             )
                         )
 
+                    # Chequeo de parámetros propensos a SSRF (API-SPEC-007)
+                    if any(kw in p_name for kw in self.SSRF_PARAM_KEYWORDS):
+                        p_schema = param.get("schema", {})
+                        if not p_schema.get("pattern") and not p_schema.get("enum"):
+                            report.add_finding(
+                                Finding(
+                                    id="API-SPEC-007",
+                                    title="Parámetro receptor de URL externa sin validación de destino (Riesgo SSRF)",
+                                    severity=Severity.HIGH,
+                                    category="Server-Side Request Forgery (SSRF)",
+                                    location=f"{op_location} (param: {param.get('name')})",
+                                    description=(
+                                        f"El parámetro '{param.get('name')}' recibe una dirección web sin definir un patrón regex estricto "
+                                        "o lista blanca de dominios permitidos."
+                                    ),
+                                    impact="Un atacante puede suministrar URLs de localhost o servicios internos de nube (AWS/GCP metadata) provocando SSRF.",
+                                    remediation="Validar el esquema (`https`), bloquear dominios/IPs privadas (RFC 1918) y definir un `pattern` estricto en la especificación.",
+                                    cwe="CWE-918",
+                                    owasp_api_id="API7:2023",
+                                )
+                            )
+
                 # 3. Falta de paginación en listas (GET)
                 if method == "get" and not path.endswith("}"):
                     # Endpoint probable de colección (ej: /users, /orders)
@@ -272,7 +295,64 @@ class SpecAuditor:
                                     )
                                 )
 
-                # 6. [AGENT-READY] Chequeo de soporte de Idempotencia en mutaciones
+                            # 6. [OWASP API7:2023] SSRF en request body
+                            if any(kw in p_lower for kw in self.SSRF_PARAM_KEYWORDS):
+                                prop_schema = props[prop_name] if isinstance(props[prop_name], dict) else {}
+                                if not prop_schema.get("pattern") and not prop_schema.get("enum"):
+                                    report.add_finding(
+                                        Finding(
+                                            id="API-SPEC-007",
+                                            title=f"Campo receptor de URL externa sin validación estricta en Request Body ({prop_name})",
+                                            severity=Severity.HIGH,
+                                            category="Server-Side Request Forgery (SSRF)",
+                                            location=f"{op_location} (body.{prop_name})",
+                                            description=(
+                                                f"La propiedad `{prop_name}` recibe una dirección URL sin definir un patrón de validación "
+                                                "o lista blanca de dominios."
+                                            ),
+                                            impact="Vulnerabilidad a Server-Side Request Forgery (SSRF) si el backend consume este destino sin filtros de IP interna.",
+                                            remediation="Restringir dominios mediante validación en backend y definir `pattern` estricto en OpenAPI.",
+                                            cwe="CWE-918",
+                                            owasp_api_id="API7:2023",
+                                        )
+                                    )
+
+                            # 7. [OWASP API4:2023] Falta de límite de longitud en strings o elementos en arrays
+                            prop_schema = props[prop_name] if isinstance(props[prop_name], dict) else {}
+                            if prop_schema.get("type") == "string":
+                                fmt = prop_schema.get("format", "")
+                                if fmt not in ("date", "date-time", "uuid", "binary", "byte") and "maxLength" not in prop_schema and "enum" not in prop_schema:
+                                    report.add_finding(
+                                        Finding(
+                                            id="API-SPEC-008",
+                                            title=f"Propiedad string sin límite de longitud máxima (maxLength) en Request Body ({prop_name})",
+                                            severity=Severity.MEDIUM,
+                                            category="Consumo Ilimitado de Recursos",
+                                            location=f"{op_location} (body.{prop_name})",
+                                            description=f"El campo `{prop_name}` no declara `maxLength` en el esquema OpenAPI.",
+                                            impact="Un atacante o bot puede enviar payloads masivos agotando la memoria del servidor o base de datos (DoS).",
+                                            remediation="Definir `maxLength` acorde a la necesidad del negocio (ej. `maxLength: 255`).",
+                                            cwe="CWE-770",
+                                            owasp_api_id="API4:2023",
+                                        )
+                                    )
+                            elif prop_schema.get("type") == "array" and "maxItems" not in prop_schema:
+                                report.add_finding(
+                                    Finding(
+                                        id="API-SPEC-008",
+                                        title=f"Colección array sin límite de elementos (maxItems) en Request Body ({prop_name})",
+                                        severity=Severity.MEDIUM,
+                                        category="Consumo Ilimitado de Recursos",
+                                        location=f"{op_location} (body.{prop_name})",
+                                        description=f"La colección `{prop_name}` no define la restricción `maxItems`.",
+                                        impact="Riesgo de procesamiento masivo no controlado y agotamiento de recursos computacionales.",
+                                        remediation="Definir `maxItems` (ej. `maxItems: 100`) para acotar la carga procesable por petición.",
+                                        cwe="CWE-770",
+                                        owasp_api_id="API4:2023",
+                                    )
+                                )
+
+                # 8. [AGENT-READY] Chequeo de soporte de Idempotencia en mutaciones
                 if method in ("post", "put", "patch") and not is_login_path:
                     header_params = [
                         p.get("name", "").lower()
@@ -301,7 +381,7 @@ class SpecAuditor:
                             )
                         )
 
-                # 7. [AGENT-READY] Chequeo de formato de error RFC 9457 (Problem Details)
+                # 9. [AGENT-READY] Chequeo de formato de error RFC 9457 (Problem Details)
                 responses = operation.get("responses", {})
                 for status_code in ("400", "422", "500"):
                     err_resp = responses.get(status_code)
@@ -332,4 +412,61 @@ class SpecAuditor:
                                     owasp_api_id="API8:2023",
                                 )
                             )
+
+                # 10. [AGENT-READY] Chequeo de semántica y descripciones para Agentes LLM
+                summary = (operation.get("summary") or "").strip()
+                description = (operation.get("description") or "").strip()
+                if is_mutation and len(summary) < 5 and len(description) < 5:
+                    report.add_finding(
+                        Finding(
+                            id="API-SPEC-009",
+                            title="Operación de mutación sin descripción semántica para Agentes de IA",
+                            severity=Severity.MEDIUM,
+                            category="Interoperabilidad con Agentes & Semántica",
+                            location=op_location,
+                            description=(
+                                f"La operación {op_location} carece de los campos `summary` o `description` descriptivos. "
+                                "Los agentes de IA (Cursor, Antigravity, MCP) utilizan estas descripciones como prompt del sistema "
+                                "para decidir cuándo y cómo ejecutar herramientas."
+                            ),
+                            impact="Llamadas imprecisas, parámetros malinterpretados o alucinaciones por parte de agentes autónomos.",
+                            remediation="Añadir `summary` conciso y `description` detallada explicando el propósito del endpoint y restricciones.",
+                            owasp_api_id="API8:2023",
+                            cwe="CWE-1059",
+                        )
+                    )
+
+                # 11. [INVENTORY] Chequeo de versionado y obsolescencia (OWASP API9:2023)
+                is_versioned = bool(re.search(r"/(v\d+|api/v\d+)(/|$)", path, re.IGNORECASE))
+                if not is_versioned and not any(kw in path.lower() for kw in ("health", "status", "metrics", "docs", "openapi")):
+                    report.add_finding(
+                        Finding(
+                            id="API-SPEC-010",
+                            title="Ruta de API sin identificador de versionado explícito",
+                            severity=Severity.LOW,
+                            category="Gestión Inadecuada de Inventario",
+                            location=op_location,
+                            description=f"La ruta '{path}' no incluye un prefijo de versión estándar (ej. `/v1/` o `/api/v1/`).",
+                            impact="Dificulta la retirada controlada de endpoints (deprecation) y favorece la existencia de endpoints zombies o desactualizados.",
+                            remediation="Estructurar los endpoints bajo prefijos versionados (ej. `/api/v1/...`) para asegurar un ciclo de vida gobernable.",
+                            owasp_api_id="API9:2023",
+                            cwe="CWE-1059",
+                        )
+                    )
+
+                if operation.get("deprecated") is True:
+                    report.add_finding(
+                        Finding(
+                            id="API-SPEC-010",
+                            title="Operación marcada como obsoleta (deprecated: true) aún expuesta",
+                            severity=Severity.LOW,
+                            category="Gestión Inadecuada de Inventario",
+                            location=op_location,
+                            description=f"La ruta {op_location} está marcada como deprecada en el contrato OpenAPI.",
+                            impact="Los clientes o agentes antiguos pueden seguir invocando código legado que no recibe parches de seguridad activos.",
+                            remediation="Establecer un cronograma de retiro (`Sunset` header RFC 8594) y migrar los consumidores a la versión vigente.",
+                            owasp_api_id="API9:2023",
+                            cwe="CWE-1059",
+                        )
+                    )
 

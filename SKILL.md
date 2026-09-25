@@ -109,6 +109,27 @@ Para APIs desplegadas en producción o staging remoto.
 
 ---
 
+### Fase 5: Diagnóstico MCP y Preparación para Agentes IA (Agent-Check)
+Para APIs y herramientas diseñadas para ser consumidas por modelos de lenguaje o asistentes autónomos (Cursor, Claude Desktop, Antigravity).
+
+1. **Diagnóstico de servidores Model Context Protocol (MCP):**
+   ```bash
+   python3 -m api_guardian mcp test ruta/al/mcp_server.py
+   ```
+   * Valida handshake de inicialización `initialize` (JSON-RPC 2.0 stdio).
+   * Comprueba que las herramientas tengan nombres, descripciones y esquemas de parámetros JSON Schema válidos.
+
+2. **Evaluación de Preparación para Agentes (Agent Readiness Scorecard):**
+   ```bash
+   python3 -m api_guardian agent-check openapi.json
+   ```
+   * Audita la garantía de **Row-Level Security (RLS)**: prohíbe que el `tenant_id` se envíe en el body.
+   * Audita **Idempotencia** (`Idempotency-Key`): protege la base de datos contra cobros duplicados en reintentos.
+   * Audita **Semántica RFC 9457**: asegura respuestas de error legibles y auto-corregibles por LLMs.
+   * Audita **Prompts/Descripciones**: alerta ante herramientas o mutaciones sin descripción.
+
+---
+
 ## 📊 Formato Obligatorio del Reporte al Usuario
 
 Cuando presentes los resultados al usuario, utiliza el formato estándar de **API Guardian**:

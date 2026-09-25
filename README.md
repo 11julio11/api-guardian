@@ -3,10 +3,11 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![OWASP API Top 10](https://img.shields.io/badge/Security-OWASP%20API%202023-red.svg)](https://owasp.org/www-project-api-security/)
+[![MCP Ready](https://img.shields.io/badge/Protocol-Model%20Context%20Protocol%20(MCP)-purple.svg)](https://modelcontextprotocol.io/)
 
 **API Guardian** es un motor de auditoría defensiva y una **Skill para agentes de IA (Antigravity)** diseñado para examinar y proteger APIs antes de probarlas en local y antes de enviarlas a producción.
 
-Está concebido para funcionar tanto en **proyectos independientes** como en **grandes corporaciones con millones de líneas de código**, resolviendo el problema de escala mediante análisis diferencial y por capas.
+Está concebido para funcionar tanto en **proyectos independientes** como en **grandes corporaciones con millones de líneas de código**, resolviendo el problema de escala mediante análisis diferencial, por capas y verificación de compatibilidad **Agent-Ready**.
 
 ---
 
@@ -14,11 +15,12 @@ Está concebido para funcionar tanto en **proyectos independientes** como en **g
 
 En proyectos con codebases masivas, es inviable y costoso pedirle a un desarrollador o a un modelo de IA que lea todo el repositorio en cada cambio. 
 
-**API Guardian** implementa el modelo **Shift-Left en 4 fases**:
-1. **Contratos (OpenAPI):** Detecta fallos de arquitectura y diseño antes de programar.
-2. **Escaneo Diferencial (Git Diff):** En lugar de todo el repositorio, audita únicamente los routers y controladores modificados en el PR/commit actual contra vulnerabilidades como BOLA/IDOR o Mass Assignment.
+**API Guardian** implementa el modelo **Shift-Left en 5 fases**:
+1. **Contratos (OpenAPI 3.x):** Detecta fallos de arquitectura, SSRF, falta de paginación o límites de memoria antes de programar.
+2. **Escaneo Diferencial (Git Diff):** Audita únicamente los routers y controladores modificados en el PR/commit actual contra vulnerabilidades como BOLA/IDOR, Mass Assignment, RCE o SSRF saliente.
 3. **Fuzzing Seguro en Local:** Prueba el servidor local contra edge-cases para evitar caídas `500 Internal Server Error`.
 4. **Inspección Pasiva en Producción:** Verifica cabeceras, políticas CORS y exposición de endpoints sin ejecutar ataques destructivos.
+5. **Auditoría Agent-Ready & MCP:** Evalúa si la API y las herramientas expuestas vía **Model Context Protocol (MCP)** son seguras contra alucinaciones, prompt injections y reintentos automáticos de agentes LLM.
 
 ```mermaid
 flowchart TD
@@ -27,11 +29,13 @@ flowchart TD
     B -->|Git Diff / Routers| D[Fase 2: Diff Scanner]
     B -->|http://localhost:*| E[Fase 3: Local Fuzzer]
     B -->|https://* Prod| F[Fase 4: Prod Inspector]
+    B -->|mcp_server.py / Agent Target| H[Fase 5: MCP & Agent-Check]
     
     C --> G[Reporte Ejecutivo Consola / Markdown / JSON]
     D --> G
     E --> G
     F --> G
+    H --> G
 ```
 
 ---
@@ -42,7 +46,7 @@ No requiere dependencias externas obligatorias para su funcionamiento base (util
 
 ```bash
 # Clonar el proyecto
-git clone https://github.com/tu-usuario/api-guardian.git
+git clone https://github.com/11julio11/api-guardian.git
 cd api-guardian
 
 # Ejecutable directamente con Python
@@ -54,7 +58,7 @@ python3 -m api_guardian --help
 ## 💡 Modos de Uso
 
 ### 1. Auditoría de Contrato OpenAPI / Swagger
-Analiza esquemas de autenticación, parámetros sensibles en query strings y falta de paginación:
+Analiza esquemas de autenticación, SSRF, parámetros sensibles en query strings, límites de tamaño (DoS) y paginación:
 ```bash
 python3 -m api_guardian spec openapi.json --save
 ```
@@ -69,53 +73,64 @@ python3 -m api_guardian diff --base origin/main
 python3 -m api_guardian file src/controllers/user.controller.ts
 ```
 
-### 3. Fuzzing de Robustez en Local (Localhost)
+### 3. Diagnóstico y Ejecución de Servidores MCP (Model Context Protocol)
+Valida que tu servidor de herramientas MCP cumpla con la especificación JSON-RPC 2.0 (stdio) para asistentes como Cursor, Claude Desktop y Antigravity:
+```bash
+# Diagnóstico de handshake, herramientas y esquemas:
+python3 -m api_guardian mcp test examples/agent_ready_api/app/mcp_server.py
+
+# Ejecución nativa del servidor MCP en stdio:
+python3 -m api_guardian mcp run examples/agent_ready_api/app/mcp_server.py
+```
+
+### 4. Evaluación de Preparación para Agentes IA (`agent-check`)
+Calcula el puntaje de seguridad (Score 0-100) evaluando aislamiento Multi-Tenant (RLS), Idempotencia (`Idempotency-Key`), formato RFC 9457 y claridad de descripciones para LLMs:
+```bash
+python3 -m api_guardian agent-check openapi.json
+```
+
+### 5. Fuzzing de Robustez en Local (Localhost)
 Valida que tu API local maneje errores correctamente devolviendo `400/422` y **nunca un `500` no controlado**:
 ```bash
 python3 -m api_guardian local http://localhost:8000 --endpoints /api/v1/auth/login,/api/v1/orders
 ```
 *(Incluye un **Safeguard** que rechaza por defecto ejecutarse contra dominios externos para evitar caídas accidentales).*
 
-### 4. Inspección Pasiva en Producción
+### 6. Inspección Pasiva en Producción
 Auditoría segura sin impacto para APIs en producción (TLS, HSTS, CORS permisivo, `/actuator`, `/.env`):
 ```bash
 python3 -m api_guardian prod https://api.tuempresa.com --save
 ```
 
-### 5. Detección Automática (`scan`)
-El modo inteligente detecta automáticamente si el objetivo es una URL, un archivo de especificación, un archivo de código o una carpeta Git:
+### 7. Inicialización de Proyecto y CI/CD (`init`)
+Genera la configuración `.api-guardian.json` y el pipeline para GitHub Actions:
 ```bash
-python3 -m api_guardian scan openapi.json
-python3 -m api_guardian scan https://api.tuempresa.com
+python3 -m api_guardian init
 ```
 
 ---
 
-## 🤖 Uso como Skill en Antigravity / Gemini Agent
+## 📊 Matriz de Cobertura OWASP API Security Top 10 (2023) & Agent-Ready
 
-El repositorio incluye el archivo [SKILL.md](file:///home/david/Documentos/mis_proyectos(Github)/api-guardian/SKILL.md). Cuando le pides al asistente en tu IDE o CLI:
-
-> *"Examina mi API antes de probarla en local"* o *"Audita los cambios en mis endpoints contra OWASP"*
-
-El agente consulta automáticamente el árbol de decisión de `SKILL.md` y ejecuta los módulos pertinentes generando un reporte estructurado con severidad, impacto y la remediación exacta en código.
-
----
-
-## 📊 Matriz de Cobertura OWASP API Security Top 10 (2023)
-
-| ID OWASP | Categoría | Módulo que lo detecta |
+| ID OWASP / Estándar | Categoría | Regla / Módulo |
 | :--- | :--- | :---: |
-| **API1:2023** | Broken Object Level Authorization (BOLA/IDOR) | `diff` / `file` |
-| **API2:2023** | Broken Authentication (Tokens en query / Hardcoded secrets) | `spec` / `diff` |
-| **API3:2023** | Broken Object Property Level Authorization (Mass Assignment) | `spec` / `diff` |
-| **API4:2023** | Unrestricted Resource Consumption (Falta de límites / paginación) | `spec` / `prod` |
-| **API8:2023** | Security Misconfiguration (CORS, HSTS, Fugas de stack trace) | `diff` / `prod` / `local` |
+| **API1:2023** | Broken Object Level Authorization (BOLA/IDOR) | `API-DIFF-005` (`diff` / `file`) |
+| **API2:2023** | Broken Authentication (Tokens en query / Hardcoded secrets) | `API-SPEC-002`, `API-SPEC-004`, `API-DIFF-001` |
+| **API3:2023** | Broken Object Property Level Authorization (Mass Assignment) | `API-SPEC-006`, `API-DIFF-003` |
+| **API4:2023** | Unrestricted Resource Consumption (Falta de límites / paginación) | `API-SPEC-005`, `API-SPEC-008` (maxLength/maxItems) |
+| **API7:2023** | Server-Side Request Forgery (SSRF en endpoints y salientes) | `API-SPEC-007`, `API-DIFF-006` |
+| **API8:2023** | Security Misconfiguration & Inyecciones (RCE, CORS, HSTS) | `API-DIFF-002`, `API-DIFF-007`, `API-DIFF-008`, `API-PROD-005` |
+| **API9:2023** | Improper Inventory Management (Rutas no versionadas o deprecadas) | `API-SPEC-010` (`spec`) |
+| **AGENT-READY** | Multi-Tenant RLS & Agent Safety (No tenant_id en body) | `API-AGENT-002` (`spec` / `diff` / `agent-check`) |
+| **AGENT-READY** | Idempotencia ante reintentos de agentes (Idempotency-Key) | `API-AGENT-001` (`spec` / `agent-check`) |
+| **AGENT-READY** | Semántica de Auto-Corrección para LLMs (RFC 9457) | `API-AGENT-003` (`spec` / `agent-check`) |
+| **AGENT-READY** | Completitud de Prompts/Descripciones de Herramientas para IA | `API-SPEC-009` (`spec` / `agent-check`) |
 
 ---
 
-## 🧪 Ejecutar Pruebas Automatizadas
+## 🧪 Pruebas Automatizadas
 
-El proyecto cuenta con una suite completa de pruebas unitarias:
+El proyecto cuenta con una suite completa de pruebas unitarias y de integración sobre subprocesos reales (sin simulaciones vacías ni mocks):
 ```bash
 python3 -m unittest discover tests
 ```

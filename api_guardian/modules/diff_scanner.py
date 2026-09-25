@@ -104,6 +104,51 @@ class DiffScanner:
             "owasp_api_id": "API1:2023",
             "cwe": "CWE-639",
         },
+        # 7. [OWASP API7:2023] SSRF in outgoing HTTP requests
+        {
+            "id": "API-DIFF-006",
+            "title": "Petición HTTP saliente utilizando URL no validada del cliente (Riesgo SSRF)",
+            "severity": Severity.HIGH,
+            "category": "Server-Side Request Forgery (SSRF)",
+            "regex": re.compile(
+                r"""(?i)(requests\.(get|post|put|delete)|fetch|axios\.(get|post)|http\.(get|request))\s*\(\s*(req\.body|request\.data|req\.query|params|data|body)(\.get\(['"].*?(url|target|webhook|dest|callback).*?['"]\)|\[['"].*?(url|target|webhook|dest|callback).*?['"]\]|\.[a-zA-Z0-9_]*(url|target|webhook|dest|callback))"""
+            ),
+            "description": "Se detectó la realización de una petición HTTP hacia una dirección controlada por el usuario sin validación de lista blanca o IP interna.",
+            "impact": "Un atacante puede forzar al servidor a acceder a servicios locales (127.0.0.1, localhost) o metadatos de proveedores cloud (169.254.169.254).",
+            "remediation": "Validar la URL contra una lista blanca estricta de dominios permitidos y resolver la IP para bloquear rangos privados (RFC 1918).",
+            "owasp_api_id": "API7:2023",
+            "cwe": "CWE-918",
+        },
+        # 8. [OWASP API8:2023] OS Command Injection / Dynamic Execution
+        {
+            "id": "API-DIFF-007",
+            "title": "Ejecución de comando del sistema con entrada de usuario (Riesgo RCE)",
+            "severity": Severity.CRITICAL,
+            "category": "Inyección de Comandos / RCE",
+            "regex": re.compile(
+                r"""(?i)(subprocess\.(Popen|run|call|check_output)\s*\(.*(req\.|request\.|params|data).*shell\s*=\s*True|subprocess\.(Popen|run|call|check_output)\s*\(.*shell\s*=\s*True.*(req\.|request\.|params|data)|(eval|exec|os\.system)\s*\(\s*.*(req\.|request\.|params|data)|child_process\.exec\s*\(.*(req\.|request\.|params|data))"""
+            ),
+            "description": "Se detectó la ejecución de comandos del shell o evaluación dinámica de código vinculada a datos recibidos de la petición.",
+            "impact": "Ejecución Remota de Código (RCE) y compromiso total del servidor anfitrión o contenedor.",
+            "remediation": "Evitar invocaciones de shell (`shell=False`) y usar listas de argumentos sin interpolar cadenas de usuario.",
+            "owasp_api_id": "API8:2023",
+            "cwe": "CWE-78",
+        },
+        # 9. [OWASP API8:2023] Permissive CORS with credentials in code
+        {
+            "id": "API-DIFF-008",
+            "title": "CORS permisivo con comodín (Access-Control-Allow-Origin: *)",
+            "severity": Severity.HIGH,
+            "category": "Mala Configuración de CORS",
+            "regex": re.compile(
+                r"""(?i)(access-control-allow-origin['"]?\s*[:=,]\s*['"]\*['"]|allow_origins\s*=\s*\[\s*['"]\*['"]\s*\])"""
+            ),
+            "description": "Se detectó la configuración de origen comodín (*) en el código de endpoints o middleware.",
+            "impact": "Permite que cualquier sitio web de terceros realice peticiones a la API o lea respuestas sensibles si no se restringe por origen.",
+            "remediation": "Especificar orígenes explícitos en lugar de comodines abiertos para APIs corporativas.",
+            "owasp_api_id": "API8:2023",
+            "cwe": "CWE-942",
+        },
     ]
 
     def __init__(self, repo_path: str = ".", base_ref: Optional[str] = None):

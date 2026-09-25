@@ -39,7 +39,8 @@
                 "type": "object",
                 "properties": {
                   "username": { "type": "string" },
-                  "role": { "type": "string" }
+                  "role": { "type": "string" },
+                  "webhook_url": { "type": "string" }
                 }
               }
             }
@@ -59,8 +60,23 @@
             "in": "query",
             "required": true,
             "schema": { "type": "string" }
+          },
+          {
+            "name": "callback_url",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
           }
         ],
+        "responses": {
+          "200": { "description": "OK" }
+        }
+      }
+    },
+    "/api/undocumented-action": {
+      "post": {
+        "summary": "",
+        "description": "",
         "responses": {
           "200": { "description": "OK" }
         }
